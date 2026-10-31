@@ -1,0 +1,26 @@
+diff --git a/cc/scheduler/scheduler_state_machine.cc b/cc/scheduler/scheduler_state_machine.cc
+index 25b03b8bde..062300103e 100644
+--- a/cc/scheduler/scheduler_state_machine.cc
++++ b/cc/scheduler/scheduler_state_machine.cc
+@@ -29,6 +29,11 @@
+ 
+ namespace cc {
+ 
++namespace {
++// Correctly throttle frames even with an unlimited frame rate.
++BASE_FEATURE(kThrottleUnlimitedFrameRate, base::FEATURE_ENABLED_BY_DEFAULT);
++}  // namespace
++
+ namespace {
+ // Surfaces and CompositorTimingHistory don't support more than 1 pending swap.
+ constexpr int kMaxPendingSubmitFrames = 1;
+@@ -1499,7 +1504,8 @@ bool SchedulerStateMachine::IsDrawThrottled() const {
+     return false;
+   }
+   return pending_submit_frames_ >= kMaxPendingSubmitFrames &&
+-         !settings_.disable_frame_rate_limit;
++         (!settings_.disable_frame_rate_limit ||
++          base::FeatureList::IsEnabled(kThrottleUnlimitedFrameRate));
+ }
+ 
+ void SchedulerStateMachine::SetVisible(bool visible) {

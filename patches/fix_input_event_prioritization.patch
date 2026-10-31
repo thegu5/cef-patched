@@ -1,0 +1,32 @@
+diff --git a/third_party/blink/renderer/platform/scheduler/main_thread/main_thread_scheduler_impl.cc b/third_party/blink/renderer/platform/scheduler/main_thread/main_thread_scheduler_impl.cc
+index 365ce53b56..c557611586 100644
+--- a/third_party/blink/renderer/platform/scheduler/main_thread/main_thread_scheduler_impl.cc
++++ b/third_party/blink/renderer/platform/scheduler/main_thread/main_thread_scheduler_impl.cc
+@@ -246,6 +246,9 @@ BASE_FEATURE_PARAM(base::TimeDelta,
+ BASE_FEATURE(kLoadingModeFromRAILMode, base::FEATURE_ENABLED_BY_DEFAULT);
+ BASE_FEATURE(kLoadingModeFromPerformanceScenario,
+              base::FEATURE_DISABLED_BY_DEFAULT);
++// When enabled (default), disables input event prioritization which can
++// starve main thread work (websockets, workers).
++BASE_FEATURE(kAimFreezeFix, base::FEATURE_ENABLED_BY_DEFAULT);
+ 
+ }  // namespace
+ 
+@@ -1306,7 +1309,7 @@ bool MainThreadSchedulerImpl::ShouldPrioritizeInputEvent(
+        web_input_event.GetType() == blink::WebInputEvent::Type::kMouseMove) &&
+       (web_input_event.GetModifiers() &
+        blink::WebInputEvent::kLeftButtonDown)) {
+-    return true;
++    return !base::FeatureList::IsEnabled(kAimFreezeFix);
+   }
+   // Ignore all other mouse events because they probably don't signal user
+   // interaction needing a smooth framerate. NOTE isMouseEventType returns false
+@@ -1317,7 +1320,7 @@ bool MainThreadSchedulerImpl::ShouldPrioritizeInputEvent(
+       blink::WebInputEvent::IsKeyboardEventType(web_input_event.GetType())) {
+     return false;
+   }
+-  return true;
++  return !base::FeatureList::IsEnabled(kAimFreezeFix);
+ }
+ 
+ void MainThreadSchedulerImpl::DidHandleInputEventOnCompositorThread(
