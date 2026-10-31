@@ -3,25 +3,27 @@
 # Build CEF in stages so that custom patches can be applied after CEF's own
 # patches but before compilation.
 #
-#   1. Download automate-git.py for the requested CEF branch.
-#   2. Incrementally update the Chromium/CEF sources without building or
+#   1. Re-exec inside the FHS build environment from fhs.nix.
+#   2. Download automate-git.py for the requested CEF branch.
+#   3. Incrementally update the Chromium/CEF sources without building or
 #      packaging.
-#   3. Re-exec inside the FHS build environment from fhs.nix.
 #   4. Apply CEF's Chromium patches (normally done at the start of the build).
-#   5. Apply custom patches (placeholder).
+#   5. Apply custom patches.
 #   6. Build and package without touching the sources again.
 #
 # Environment overrides:
-#   CEF_BRANCH      CEF branch to build (default: 8078) (https://crates.io/crates/cef/156.2.0+156.0.14)
-#   CEF_FORCE_CLEAN Set to 1 to discard the checkout and build output before
-#                   updating (default: 0)
+#   CEF_BRANCH        CEF branch to build (default: 8078) (https://crates.io/crates/cef/156.2.0+156.0.14)
+#   CEF_FORCE_CLEAN   Set to 1 to discard the checkout and build output before
+#                     updating (default: 0)
+#   CEF_PREPARE_ONLY  Set to 1 to stop after all patches are applied, without
+#                     building (default: 0)
 #
 set -euo pipefail
 
 SCRIPT_PATH="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
 REPO_ROOT="$(dirname "$SCRIPT_PATH")"
 BUILD_DIR="$REPO_ROOT/build"
-DOWNLOAD_DIR="$BUILD_DIR/cef"
+DOWNLOAD_DIR="$BUILD_DIR"
 CHROMIUM_SRC="$DOWNLOAD_DIR/chromium/src"
 CEF_SRC="$CHROMIUM_SRC/cef"
 
@@ -42,42 +44,45 @@ COMMON_ARGS=(
 step() { printf '\n==> %s\n' "$*"; }
 
 # ---------------------------------------------------------------------------
-# 1-3. Download, update, then re-exec inside the build environment.
+# 1. Enter the FHS build environment.
 #
-# Downloading and updating run on the host with the host's Python/git/curl,
-# which is known to work for depot_tools. The Chromium build, however, needs
-# an FHS environment because its build system invokes pkg-config and looks for
-# libraries and headers in standard locations. fhs.nix provides that
-# environment, and direnv's `use nix` cannot enter an FHS namespace, so
-# re-exec through the wrapper produced by nix-build.
+# Everything (download, update, patching, build) runs inside the FHS env from
+# fhs.nix, which provides python3/git/curl plus the headers and libraries the
+# Chromium build expects in standard locations. direnv's `use nix` cannot enter
+# an FHS namespace, so re-exec through the wrapper produced by nix-build.
 #
-# CEF_ENV_ACTIVE is inherited by the re-exec'd script and makes it skip these
-# steps, so the wrapper is not entered recursively.
+# CEF_ENV_ACTIVE is inherited by the re-exec'd script so the wrapper is not
+# entered recursively.
 # ---------------------------------------------------------------------------
 if [ -z "${CEF_ENV_ACTIVE:-}" ]; then
-  step "Downloading automate-git.py"
-  mkdir -p "$BUILD_DIR"
-  curl -fsSL "$AUTOMATE_URL" -o "$AUTOMATE"
-
-  # --no-build skips compilation, but the distribution step still runs whenever
-  # the checkout changed, so --no-distrib is required as well.
-  #
-  # --force-clean is intentionally not passed by default. It deletes the CEF
-  # checkout, the persisted out directory and chromium/src/out, which discards
-  # all compilation progress. Without it the update is incremental and a rerun
-  # resumes the previous build via ninja. Set CEF_FORCE_CLEAN=1 to opt in.
-  UPDATE_ARGS=(--no-build --no-distrib)
-  if [ "${CEF_FORCE_CLEAN:-0}" = "1" ]; then
-    UPDATE_ARGS+=(--force-clean)
-  fi
-  step "Updating Chromium/CEF sources"
-  python3 "$AUTOMATE" "${COMMON_ARGS[@]}" "${UPDATE_ARGS[@]}"
-
   step "Entering build environment"
   ENV_BIN="$(nix-build "$REPO_ROOT/fhs.nix" --no-out-link)/bin/chromium-env"
   export CEF_ENV_ACTIVE=1
   exec "$ENV_BIN" "$SCRIPT_PATH" "$@"
 fi
+
+# ---------------------------------------------------------------------------
+# 2-3. Download automate-git.py and update the Chromium/CEF sources without
+# building or packaging.
+#
+# --no-build skips compilation, but the distribution step still runs whenever
+# the checkout changed, so --no-distrib is required as well.
+#
+# --force-clean is intentionally not passed by default. It deletes the CEF
+# checkout, the persisted out directory and chromium/src/out, which discards
+# all compilation progress. Without it the update is incremental and a rerun
+# resumes the previous build via ninja. Set CEF_FORCE_CLEAN=1 to opt in.
+# ---------------------------------------------------------------------------
+step "Downloading automate-git.py"
+mkdir -p "$BUILD_DIR"
+curl -fsSL "$AUTOMATE_URL" -o "$AUTOMATE"
+
+UPDATE_ARGS=(--no-build --no-distrib)
+if [ "${CEF_FORCE_CLEAN:-0}" = "1" ]; then
+  UPDATE_ARGS+=(--force-clean)
+fi
+step "Updating Chromium/CEF sources"
+python3 "$AUTOMATE" "${COMMON_ARGS[@]}" "${UPDATE_ARGS[@]}"
 
 # ---------------------------------------------------------------------------
 # 4. Apply CEF's Chromium patches
@@ -97,8 +102,9 @@ fi
 # 5. Apply custom patches
 #
 # Patches in $REPO_ROOT/patches are applied to the Chromium tree
-# ($CHROMIUM_SRC). Application is idempotent: a patch that is already applied
-# is detected with a reverse check and skipped, so reruns are safe.
+# ($CHROMIUM_SRC) in glob order. Application is idempotent: a patch that is
+# already applied is detected with a reverse check and skipped, so reruns are
+# safe.
 # ---------------------------------------------------------------------------
 step "Applying custom patches"
 apply_custom_patches() {
@@ -114,6 +120,15 @@ apply_custom_patches() {
   done
 }
 apply_custom_patches
+
+# ---------------------------------------------------------------------------
+# Optional: stop once all patches are applied (for producing a patch-editing
+# tree). Set CEF_PREPARE_ONLY=1.
+# ---------------------------------------------------------------------------
+if [ "${CEF_PREPARE_ONLY:-0}" = "1" ]; then
+  step "All patches applied at $CHROMIUM_SRC; stopping before build"
+  exit 0
+fi
 
 # ---------------------------------------------------------------------------
 # 6. Build and package without touching the sources again

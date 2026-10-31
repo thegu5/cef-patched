@@ -1,10 +1,5 @@
-# TODO: maybe just use latest nixpkgs, and not treat warnings as errors?
 let
-  nixpkgs = fetchTarball "https://github.com/NixOS/nixpkgs/archive/bd85f316bebe290b96b35ddb5c0be62d1f0c9137.tar.gz";
-  pkgs = import nixpkgs {
-    config = { };
-    overlays = [ ];
-  };
+  pkgs = import <nixpkgs> { };
 in
 pkgs.buildFHSEnv {
   name = "chromium-env";
@@ -12,7 +7,7 @@ pkgs.buildFHSEnv {
   extraOutputsToInstall = [ "dev" ];
   targetPkgs =
     pkgs: with pkgs; [
-      glibc.dev
+      glibc
       linuxHeaders
       gcc.cc
       pkg-config
@@ -27,47 +22,49 @@ pkgs.buildFHSEnv {
       nss
       nspr
       krb5
-      xorg.libX11
-      xorg.xorgproto
-      xorg.libXcomposite
-      xorg.libXdamage
-      xorg.libXext
-      xorg.libXfixes
-      xorg.libXrandr
-      xorg.libXtst
+      libX11
+      xorgproto
+      libXcomposite
+      libXdamage
+      libXext
+      libXfixes
+      libXrandr
+      libXtst
+      libxshmfence
       mesa
       dri-pkgconfig-stub
       libgbm
       libva
       libdrm
+      libglvnd
+      vulkan-loader
       alsa-lib
       libxkbcommon
       pango
       dbus
       at-spi2-atk
-      xorg.libxcb
+      libxcb
       cairo
       systemd
-      xorg.xdpyinfo
-      pipewire.dev
+      xdpyinfo
+      pipewire
       libffi
-      wayland.dev
+      wayland
       pciutils
-      libGL.dev
-      xorg.xinput
-      xorg.libXrender
-      xorg.libXi
-      pulseaudio.dev
-      curl.dev
+      libGL
+      xinput
+      libXrender
+      libXi
+      pulseaudio
+      curl
       libuuid
-      fontconfig.dev
+      fontconfig
       vulkan-headers
-      harfbuzz.dev
-      gdk-pixbuf.dev
-      xorg.libxshmfence
+      harfbuzz
+      gdk-pixbuf
     ];
   profile = ''
     export PKG_CONFIG_PATH="/usr/lib/pkgconfig:/usr/share/pkgconfig"
-    export GN_DEFINES="use_system_libffi=true rtc_use_pipewire=true"
+    export GN_DEFINES="is_official_build=true symbol_level=1 treat_warnings_as_errors=false use_system_libffi=true rtc_use_pipewire=true"
   '';
 }
