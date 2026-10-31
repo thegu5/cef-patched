@@ -62,6 +62,9 @@ pkgs.buildFHSEnv {
       libuuid
       fontconfig.dev
       vulkan-headers
+      harfbuzz.dev
+      gdk-pixbuf.dev
+      xorg.libxshmfence
     ];
   profile = ''
     export PKG_CONFIG_PATH="/usr/lib/pkgconfig:/usr/share/pkgconfig"
